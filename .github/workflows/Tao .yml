@@ -1,0 +1,162 @@
+name: 🚀 LongVPS 
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: '🕐 Thời gian sử dụng'
+        required: false
+        default: '5h40m'
+        type: choice
+        options:
+          - '1h'
+          - '3h'
+          - '5h40m'
+
+jobs:
+  Premium-RDP-Setup:
+    runs-on: windows-latest
+    timeout-minutes: 340
+    
+    steps:
+      - name: 🎯 KHỞI ĐỘNG HỆ THỐNG
+        shell: pwsh
+        run: |
+          Write-Host ""
+          Write-Host ""
+          Write-Host "🤖 Longday SERVER" -ForegroundColor Yellow
+          Write-Host "⚡ Powered by AIL" -ForegroundColor Green
+          Write-Host "🕒 Thời gian: ${{ github.event.inputs.duration }}" -ForegroundColor Magenta
+          Write-Host ""
+          
+          $frames = @('⣾','⣽','⣻','⢿','⡿','⣟','⣯','⣷')
+          for($i=0;$i -lt 10;$i++){
+            Write-Host "`r🚀 Đang khởi tạo hệ thống... $($frames[$i % 8])" -NoNewline -ForegroundColor Blue
+            Start-Sleep -Milliseconds 100
+          }
+          Write-Host "`r✅ Hệ thống đã sẵn sàng!                    " -ForegroundColor Green
+
+      - name: 🔧 CẤU HÌNH HỆ THỐNG
+        shell: pwsh
+        run: |
+          Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG" -ForegroundColor Yellow
+          
+          $steps = @(
+            @{Name="Bật Remote Desktop"; Script={
+              Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -Value 0 -Force
+            }},
+            @{Name="Tắt xác thực mạng"; Script={
+              Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name UserAuthentication -Value 0 -Force
+            }},
+            @{Name="Cấu hình bảo mật RDP"; Script={
+              Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name SecurityLayer -Value 0 -Force
+              Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name UserAuthentication -Value 0 -Force
+            }},
+            @{Name="Mở port 3389 firewall"; Script={
+              netsh advfirewall firewall add rule name="RDP-Premium" dir=in action=allow protocol=TCP localport=3389
+              netsh advfirewall firewall add rule name="RDP-Premium-Out" dir=out action=allow protocol=TCP localport=3389
+            }},
+            @{Name="Khởi động dịch vụ"; Script={
+              Set-Service -Name TermService -StartupType Automatic -ErrorAction SilentlyContinue
+              Set-Service -Name UmRdpService -StartupType Automatic -ErrorAction SilentlyContinue
+              Start-Service -Name TermService -ErrorAction SilentlyContinue
+              Start-Service -Name UmRdpService -ErrorAction SilentlyContinue
+            }}
+          )
+
+          foreach($step in $steps){
+            Write-Host "│ 📋 $($step.Name)..." -NoNewline
+            try { & $step.Script; Write-Host "`r│ ✅ $($step.Name)" -ForegroundColor Green }
+            catch { Write-Host "`r│ ⚠️  $($step.Name) - Đã bỏ qua lỗi nhỏ" -ForegroundColor Yellow }
+            Start-Sleep -Milliseconds 400
+          }
+
+      - name: 👤 TẠO TÀI KHOẢN PREMIUM
+        shell: pwsh
+        run: |
+          function New-PremiumPassword {
+            $upper='ABCDEFGHJKLMNPQRSTUVWXYZ'
+            $lower='abcdefghijkmnpqrstuvwxyz'
+            $numbers='23456789'
+            $all=$upper+$lower+$numbers
+
+            $pw = ""
+            $pw += $upper[(Get-Random -Max $upper.Length)]
+            $pw += $lower[(Get-Random -Max $lower.Length)]
+            $pw += $numbers[(Get-Random -Max $numbers.Length)]
+
+            1..5 | ForEach-Object {
+              $pw += $all[(Get-Random -Max $all.Length)]
+            }
+
+            -join ($pw.ToCharArray() | Sort-Object {Get-Random})
+          }
+
+          if($env:CUSTOM_RDP_PASS){
+            $matKhau=$env:CUSTOM_RDP_PASS
+          } else {
+            $matKhau=New-PremiumPassword
+          }
+
+          $securePass=ConvertTo-SecureString $matKhau -AsPlainText -Force
+
+          Remove-LocalUser -Name "LongDay2203" -ErrorAction SilentlyContinue
+          New-LocalUser -Name "LongDay2203" -Password $securePass -AccountNeverExpires
+          Enable-LocalUser -Name "LongDay2203"
+          Add-LocalGroupMember -Group Administrators -Member LongDay2203
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member LongDay2203
+
+          echo "RDP_USER=LongDay2203" >> $env:GITHUB_ENV
+          echo "RDP_PASS=$matKhau" >> $env:GITHUB_ENV
+          $matKhau > $env:TEMP\rdp_password.txt
+
+      - name: 🌐 THIẾT LẬP MẠNG PREMIUM
+        shell: pwsh
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          $msi="$env:TEMP\tailscale.msi"
+          Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile $msi
+          Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait
+          Remove-Item $msi -Force
+
+          Start-Sleep -Seconds 8
+
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey $env:TAILSCALE_AUTH_KEY --hostname "LongDay-$env:GITHUB_RUN_ID" --accept-routes --accept-dns --reset
+
+          $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+
+      - name: 🎉 THÔNG TIN KẾT NỐI
+        shell: pwsh
+        run: |
+          $matKhau = Get-Content $env:TEMP\rdp_password.txt
+          switch("${{ github.event.inputs.duration }}"){
+            "1h" { $totalMinutes=60 }
+            "3h" { $totalMinutes=180 }
+            "5h40m" { $totalMinutes=340 }
+          }
+
+          echo "TOTAL_MINUTES=$totalMinutes" >> $env:GITHUB_ENV
+
+          Write-Host "============================================="
+          Write-Host "IP: $env:TAILSCALE_IP"
+          Write-Host "User: LongDay2203"
+          Write-Host "Pass: $matKhau"
+          Write-Host "============================================="
+
+      - name: ⏳ DUY TRÌ PHIÊN
+        shell: pwsh
+        run: |
+          $total = [int]$env:TOTAL_MINUTES
+          Start-Sleep -Seconds ($total * 60)
+
+      - name: 🧹 DỌN DẸP HỆ THỐNG
+        shell: pwsh
+        if: always()
+        run: |
+          Remove-Item "$env:TEMP\rdp_password.txt" -ErrorAction SilentlyContinue
+          Disable-LocalUser -Name "LongDay2203" -ErrorAction SilentlyContinue
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" down --accept-risk=all -ErrorAction SilentlyContinue
+          netsh advfirewall firewall delete rule name="RDP-Premium" -ErrorAction SilentlyContinue
+          netsh advfirewall firewall delete rule name="RDP-Premium-Out" -ErrorAction SilentlyContinue
