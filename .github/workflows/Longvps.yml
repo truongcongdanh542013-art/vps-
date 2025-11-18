@@ -1,0 +1,154 @@
+param(
+    [Parameter(Mandatory=$false)][string]$TailscaleAuthKey = "",
+    [Parameter(Mandatory=$false)][ValidateSet("1h","3h","5h40m")][string]$Duration = "5h40m"
+)
+
+# ---------- helpers ----------
+function Write-Title($s){ Write-Host $s -ForegroundColor Cyan }
+function RandPassword(){
+    $upper='ABCDEFGHJKLMNPQRSTUVWXYZ'
+    $lower='abcdefghijkmnpqrstuvwxyz'
+    $nums='23456789'
+    $all=$upper+$lower+$nums
+    $pw=''
+    $pw += $upper[(Get-Random -Minimum 0 -Maximum $upper.Length)]
+    $pw += $lower[(Get-Random -Minimum 0 -Maximum $lower.Length)]
+    $pw += $nums[(Get-Random -Minimum 0 -Maximum $nums.Length)]
+    for($i=1;$i -le 5;$i++){ $pw += $all[(Get-Random -Minimum 0 -Maximum $all.Length)] }
+    return -join ($pw.ToCharArray() | Sort-Object { Get-Random })
+}
+
+# ---------- banner neon + hacker intro ----------
+$neonColors = @("Red","Magenta","Yellow","Cyan","Green")
+$asciiArt = @"
+██▓     ▒█████   ███▄ ▄███▓   ▒█████   ▒██   ██▒ ██▓███    ██████ 
+▓██▒    ▒██▒  ██▒▓██▒▀█▀ ██▒  ▒██▒  ██▒ ▒▒ █ █ ▒░▓██░  ██▒▒██    ▒ 
+▒██░    ▒██░  ██▒▓██    ▓██░ ▒██░  ██▒ ░░  █   ░▓██░ ██▓▒░ ▓██▄   
+▒██░    ▒██   ██░▒██    ▒██  ▒██   ██░  ░ █ █ ▒ ▒██▄█▓▒ ▒  ▒   ██▒
+░██████▒░ ████▓▒░▒██▒   ░██▒░ ████▓▒░ ▒██▒ ▒██▒▒██▒ ░  ░▒██████▒▒
+"@
+for ($i=0; $i -lt 6; $i++) {
+    Clear-Host
+    $color = $neonColors[$i % $neonColors.Count]
+    Write-Host $asciiArt -ForegroundColor $color
+    Start-Sleep -Milliseconds 140
+}
+Write-Host ""
+Write-Host "⚡ INITIATING LONGVPS CORE..." -ForegroundColor Cyan
+$frames = @("|","/","-","\")
+for ($i=0; $i -lt 28; $i++) {
+    $f = $frames[$i % 4]
+    Write-Host "`r[BOOT] Loading kernel modules $f" -NoNewline -ForegroundColor Green
+    Start-Sleep -Milliseconds 120
+}
+Write-Host "`n🛰️  Establishing secure channels..." -ForegroundColor Yellow
+$scanSteps = @("Scanning memory...", "Injecting optimizations...", "Activating neon rendering...", "Encrypting RDP handshake...", "Bypassing latency firewall...", "Boosting network pathways...", "Calibrating Anti-AFK...", "Verifying system integrity...")
+foreach ($s in $scanSteps) { Write-Host "[$(Get-Random -Minimum 1000 -Maximum 9999)] $s" -ForegroundColor Magenta; Start-Sleep -Milliseconds 160 }
+Write-Host ""
+
+# ---------- create user ----------
+$UserName = "LongDay2203"
+Write-Title "Tạo tài khoản RDP..."
+$pw = RandPassword()
+$secure = ConvertTo-SecureString $pw -AsPlainText -Force
+
+try { Remove-LocalUser -Name $UserName -ErrorAction SilentlyContinue } catch {}
+try {
+    New-LocalUser -Name $UserName -Password $secure -AccountNeverExpires -Description "LongVPS Premium User" -ErrorAction Stop
+    Enable-LocalUser -Name $UserName
+    Add-LocalGroupMember -Group "Administrators" -Member $UserName -ErrorAction SilentlyContinue
+    Add-LocalGroupMember -Group "Remote Desktop Users" -Member $UserName -ErrorAction SilentlyContinue
+    Write-Host "✅ User $UserName created." -ForegroundColor Green
+} catch { Write-Host "❌ Lỗi tạo user: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
+
+# save password temporarily
+"$pw" | Out-File -FilePath "$env:TEMP\rdp_password.txt" -Encoding ascii -Force
+
+# ---------- enable RDP + firewall ----------
+Write-Title "Cấu hình RDP & Firewall..."
+Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+# Disable NLA (if desired)
+try { Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force -ErrorAction SilentlyContinue } catch {}
+# firewall rule
+netsh advfirewall firewall add rule name="RDP-Premium" dir=in action=allow protocol=TCP localport=3389 profile=any 2>$null
+Write-Host "✅ RDP enabled + firewall opened." -ForegroundColor Green
+
+# ---------- network boost ----------
+Write-Title "Áp dụng Boost Network..."
+try {
+    netsh int tcp set global autotuninglevel=normal
+    netsh int tcp set global chimney=enabled
+    netsh int tcp set global rss=enabled
+    netsh int tcp set supplemental template=internet congestionprovider=cubic
+    reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" /v EnableTCPFastOpen /t REG_DWORD /d 1 /f | Out-Null
+    netsh winhttp reset proxy
+    netsh interface ipv4 set subinterface "Ethernet" mtu=1500 store=persistent
+    Write-Host "✅ Network boost applied." -ForegroundColor Green
+} catch { Write-Host "⚠️ Một vài lệnh boost có thể không hỗ trợ trên môi trường này." -ForegroundColor Yellow }
+
+# ---------- install Tailscale if auth key provided ----------
+if ($TailscaleAuthKey -and $TailscaleAuthKey.Trim() -ne "") {
+    Write-Title "Cài đặt & kết nối Tailscale..."
+    try {
+        $msiPath = "$env:TEMP\tailscale-setup.msi"
+        Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile $msiPath -UseBasicParsing
+        Start-Process msiexec.exe -ArgumentList "/i", "`"$msiPath`"", "/quiet", "/norestart" -Wait
+        Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 5
+        & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$TailscaleAuthKey --hostname="LongVPS-$(Get-Random -Maximum 9999)" --accept-routes --accept-dns --reset
+        Start-Sleep -Seconds 3
+        $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 2>$null
+        if ($ip -match '\d+\.\d+\.\d+\.\d+') { Write-Host "✅ Tailscale IP: $ip" -ForegroundColor Green; "$ip" | Out-File -FilePath "$env:TEMP\tailscale_ip.txt" -Encoding ascii -Force }
+        else { Write-Host "⚠️ Không lấy được IP Tailscale, kiểm tra authkey." -ForegroundColor Yellow }
+    } catch { Write-Host "❌ Lỗi cài Tailscale: $($_.Exception.Message)" -ForegroundColor Red }
+} else {
+    Write-Host "ℹ️ Không có Tailscale key, bỏ qua bước cài Tailscale." -ForegroundColor Yellow
+}
+
+# ---------- Anti-AFK ----------
+Write-Title "Kích hoạt Anti-AFK nền..."
+$anti = @"
+Add-Type -AssemblyName System.Windows.Forms
+while($true){
+    [System.Windows.Forms.SendKeys]::SendWait('{NUMLOCK}')
+    Start-Sleep -Seconds 45
+}
+"@
+$antiPath = "$env:TEMP\anti_afk_longvps.ps1"
+$anti | Out-File -FilePath $antiPath -Encoding UTF8
+Start-Process powershell -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$antiPath`"" -WindowStyle Hidden
+Write-Host "✅ Anti-AFK chạy nền." -ForegroundColor Green
+
+# ---------- show final info + nice box ----------
+$start = Get-Date
+switch ($Duration) { "1h" {$mins=60} "3h" {$mins=180} default {$mins=340} }
+$end = $start.AddMinutes($mins)
+$tailsIP = (Test-Path "$env:TEMP\tailscale_ip.txt") ? (Get-Content "$env:TEMP\tailscale_ip.txt" -ErrorAction SilentlyContinue) : "localhost"
+
+Write-Host ""
+Write-Host "┌───────────────────────────────────────────┐" -ForegroundColor Cyan
+Write-Host "│              🎉 LONGVPS READY!              │" -ForegroundColor Cyan
+Write-Host "├───────────────────────────────────────────┤" -ForegroundColor Cyan
+Write-Host ("│ 🌐  Địa chỉ: {0,-30} │" -f $tailsIP) -ForegroundColor White
+Write-Host ("│ 👤  Tài khoản: {0,-30} │" -f $UserName) -ForegroundColor White
+Write-Host ("│ 🔐  Mật khẩu: {0,-30} │" -f $pw) -ForegroundColor White
+Write-Host ("│ ⏰  Thời lượng: {0,-26} │" -f $Duration) -ForegroundColor White
+Write-Host ("│ 🕐  Bắt đầu: {0,-28} │" -f $start.ToString('yyyy-MM-dd HH:mm:ss')) -ForegroundColor White
+Write-Host ("│ 🕐  Kết thúc: {0,-28} │" -f $end.ToString('yyyy-MM-dd HH:mm:ss')) -ForegroundColor White
+Write-Host "└───────────────────────────────────────────┘" -ForegroundColor Cyan
+
+# ---------- simple cleanup on exit (user triggers manually) ----------
+Write-Host "`n⚠️ Lưu ý: để dọn dẹp sau khi xong, chạy cleanup block dưới đây (hoặc reboot)."
+
+function Cleanup-LongVPS {
+    Write-Host "🧹 Dọn dẹp..."
+    Remove-Item "$env:TEMP\rdp_password.txt" -ErrorAction SilentlyContinue
+    Remove-Item "$env:TEMP\tailscale_ip.txt" -ErrorAction SilentlyContinue
+    Remove-Item $antiPath -ErrorAction SilentlyContinue
+    try { Disable-LocalUser -Name $UserName -ErrorAction SilentlyContinue } catch {}
+    try { & "$env:ProgramFiles\Tailscale\tailscale.exe" down --accept-risk=all -ErrorAction SilentlyContinue } catch {}
+    netsh advfirewall firewall delete rule name="RDP-Premium" -ErrorAction SilentlyContinue
+    Write-Host "✅ Done."
+}
+
+# End of script
