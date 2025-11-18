@@ -1,0 +1,39 @@
+name: 🚀 Kasm Desktop Ultra
+
+on:
+  workflow_dispatch:
+
+jobs:
+  kasm-web-desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: 🔥 Cài Kasm Desktop (Ubuntu GUI dạng Web)
+        run: |
+          docker pull kasmweb/ubuntu-jammy-desktop:1.14.0
+          docker run -d \
+            --name kasm \
+            -p 6901:6901 \
+            --shm-size=2g \
+            kasmweb/ubuntu-jammy-desktop:1.14.0
+
+      - name: 🌐 Lấy link truy cập GUI
+        run: |
+          echo ""
+          echo "==============================================="
+          echo "🎉 KASM DESKTOP ĐÃ KHỞI ĐỘNG!"
+          echo "🔗 Link truy cập giao diện Desktop:"
+          echo ""
+          echo "👉 https://8080-${{ github.run_id }}-${{ github.run_number }}.githubpreview.dev"
+          echo ""
+          echo "🔐 User: kasm_user"
+          echo "🔐 Pass: password"
+          echo "==============================================="
+          echo ""
+
+      - name: 🌍 Tạo tunnel Web (cho phép truy cập từ trình duyệt)
+        run: |
+          curl -fsSL https://github.com/anderspitman/telebit/releases/download/v0.20.3/telebit-linux-arm | sudo tee /usr/local/bin/telebit > /dev/null
+          chmod +x /usr/local/bin/telebit
+          telebit http 6901 2>/dev/null &
