@@ -1,0 +1,44 @@
+name: 🚀 Kasm Desktop (Cloudflare Tunnel - FIXED)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  kasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: ⚙️ Kiểm tra Docker (đã có sẵn)
+        run: docker --version
+
+      - name: 🖥️ Kéo Kasm Desktop
+        run: |
+          docker pull kasmweb/ubuntu-jammy-desktop:1.14.0
+          docker run -d \
+            --name kasm \
+            -p 6901:6901 \
+            --shm-size=2g \
+            kasmweb/ubuntu-jammy-desktop:1.14.0
+
+      - name: 🌐 Cài Cloudflared
+        run: |
+          wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared-linux-amd64
+          sudo mv cloudflared-linux-amd64 /usr/local/bin/cloudflared
+
+      - name: 🚀 Mở Tunnel Cloudflare
+        run: |
+          cloudflared tunnel --url http://localhost:6901 --no-autoupdate &
+          sleep 10
+
+      - name: 📝 Hướng dẫn
+        run: |
+          echo ""
+          echo "============================================"
+          echo "🎉 KASM DESKTOP ĐANG CHẠY!"
+          echo "👉 Kéo log ở trên để tìm link .trycloudflare.com"
+          echo ""
+          echo "🔐 User: kasm_user"
+          echo "🔐 Pass: password"
+          echo "============================================"
